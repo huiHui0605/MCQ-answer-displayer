@@ -1,34 +1,38 @@
-# MCQ Study · 免费本地讲义练习助手
+# MCQ Study · 免费本地英文题目助手
 
-Windows 桌面悬浮小窗口。点击 **扫描 MCQ**，截取一次当前主屏幕，在本机 OCR 识别题干和 A/B/C/D 选项，然后自动显示答案、解释及 PDF 原文页码。点击结果窗口的“收起”按钮可收起；右键图标可查看结果、手动粘贴或退出，用系统标题栏拖动。
+点击悬浮图标 **框选 MCQ**，拖动选择题目区域，本地 OCR 识别后由本地模型作答。结果窗口只显示：
 
-**没有云端 AI 调用，没有 API key，也没有按题目收费。** 本地 Ollama 加载 Qwen2.5 3B 推理，讲义检索和缓存也在本机。程序只向 `127.0.0.1:11434` 发送本机请求，不使用系统代理、不跟随重定向；云端模型名称和 Ollama 报告的远程模型会被拒绝。初次安装软件、Python 依赖和下载模型需要联网，下载完成后可断网使用。OCR 使用 RapidOCR 包内附带的 ONNX 权重，无需额外 OCR key、Tesseract 或在线识别服务；ONNX Runtime 的可选遥测在创建 OCR 引擎前显式关闭。需要自行提供电脑、存储空间和电力。
+```text
+1. b
+2. c
+3. ?
+```
 
-默认针对 Windows、16GB 以上内存，不要求独立显卡。CPU 也可运行，但首次加载或推理可能需要几十秒至数分钟；无法保证秒回或每题正确。相同题目命中缓存时通常更快。
+不显示解释、置信度或引用。`?` 表示依据不足、模型无法确定或该题处理失败，不代表某个选项。题目、OCR 和推理均在本机；没有云端 AI 调用、API key 或按题目收费。初次安装和下载模型需要联网，完成后可以离线使用。
 
 ## Windows 安装
 
-1. 安装 [Python 3.12.10 的 Windows installer (64-bit)](https://www.python.org/downloads/release/python-31210/)（保留 Tcl/Tk 和 Python Launcher 组件；OCR 依赖要求 Python < 3.13，不能使用 3.13/3.14 或更新版本）和 [Ollama Windows 版](https://ollama.com/download/windows)。若用 Git 克隆，也要安装 Git；不想安装 Git 可在 GitHub 点击 **Code → Download ZIP** 后解压。
-2. 打开 Ollama 应用，确保它在后台运行。在 PowerShell 执行一次模型下载：
+适合 Windows 64 位、16GB 以上内存。CPU 可运行，不要求独立显卡，但没有显卡时可能需要较长时间，无法保证秒回或每题正确。
+
+1. 安装 [Python 3.12.10 Windows installer (64-bit)](https://www.python.org/downloads/release/python-31210/)，保留 Tcl/Tk 和 Python Launcher。OCR 依赖不支持 Python 3.13 或更新版本，无需卸载其他 Python。
+2. 安装并打开 [Ollama](https://ollama.com/download/windows)，在 PowerShell 执行一次：
 
    ```powershell
    ollama pull qwen2.5:3b
    ```
 
-   模型需要约数 GB 磁盘空间。不要选择带 `cloud` 的模型；无需登录 Ollama 账户。若命令未找到，重开 PowerShell；若连不上本机服务，打开 Ollama，或在单独终端运行 `ollama serve` 并保持该终端开启。
-3. 获取本项目：
+   模型需要约数 GB 空间。不要选 cloud 模型，不需要 Ollama 账户。若命令找不到，重开终端；连接失败时打开 Ollama，或在另一个终端运行 `ollama serve` 并保持开启。
+3. 下载本项目 ZIP 并解压，或使用 Git：
 
    ```powershell
    git clone https://github.com/huiHui0605/MCQ-answer-displayer.git
    cd MCQ-answer-displayer
    ```
+4. 双击 `setup_windows.bat`，脚本明确选择 64 位 Python 3.12，在 `.venv-py312` 安装依赖，保留旧 `.venv`。
+5. 把自己的 lecture note PDF 放入 `notes/`。GitHub 不包含用户提供的教材 PDF 或提取后的教材正文。
+6. 保持 Ollama 在后台运行，双击 `start_windows.bat`。
 
-   已经克隆的用户在项目目录执行 `git pull origin main`。下载 ZIP 的用户直接打开解压后的项目目录。
-4. 双击 `setup_windows.bat`。脚本明确选择 64 位 Python 3.12，并在 `.venv-py312` 中安装依赖；会保留旧的 `.venv`，无需卸载其他 Python 版本。
-5. 把你自己的 lecture note PDF 复制到项目的 `notes` 文件夹。GitHub **不包含教材 PDF 或提取后的教材正文**；云端用于验证的 13 份文件仍保留在本地，未上传。
-6. 双击 `start_windows.bat`。它先检查 PDF 文本和本机模型，成功后打开悬浮窗口。不需要填写任何 key。
-
-若希望手动安装和启动，使用：
+手动安装/启动：
 
 ```powershell
 py -3.12 -m venv .venv-py312
@@ -37,84 +41,76 @@ py -3.12 -m venv .venv-py312
 .\.venv-py312\Scripts\python.exe app.py
 ```
 
-每次启动时都需要 Ollama 后台在运行，但不需要重新下载模型。`check_setup.py` 只检查文件和模型，不验证推理准确率。
+## 框选与答案
 
-## 一键扫描当前画面
+1. 在主显示器上显示完整英文题目和 A/B/C/D 选项。点击 **框选 MCQ**。
+2. 屏幕会冻结显示本次截图。拖动框选**题干和全部选项**，排除浏览器菜单、侧栏、广告和其他无关内容。松开鼠标开始识别；按 **Esc** 取消。
+3. 结果窗口只显示题号和小写答案。处理中显示短状态，完成后状态清空。
+4. 识别不完整时重新框选，或右键悬浮图标 → **校正识别文字 / 手动粘贴**。校正框独立于答案窗口，不会默认展示。
+5. 关闭答案窗口可收起；右键图标可查看答案或退出；用系统标题栏拖动。
 
-1. 将**一道题及完整 A/B/C/D 选项**清晰显示在 Windows 的主屏幕（系统设置中的主显示器）上，建议放大文字，避免同时出现多道题。
-2. 等悬浮图标由“准备中”变成“扫描 MCQ”，单击一次。
-3. 程序会短暂收起自己的窗口（约 0.3 秒，避免挡住题目），截取一次主屏幕，随即恢复窗口并显示“正在本地识别文字”。没有持续截屏或定时扫描。
-4. OCR 识别到唯一完整的 A/B/C/D 选项后，自动检索讲义、调用本地模型并显示结果，无需再点击答题按钮。
-5. 选项缺失、出现多组 A/B/C/D 或 OCR 置信度较低时，会显示识别文字和提示。校正后点击“显示答案”；也可以点击“重新扫描”。即使自动识别成功，也应核对题干、NOT/EXCEPT、数字和选项。
+框选单列多道题时，题号需连续且各题都有完整 A/B/C/D；支持 `1. ...`、`1) ...`、`Question 1`、`Q1:` 等格式。会保留原题号，例如框选第 5、6 题输出 `5. b`、`6. c`。无题号的单题默认显示 `1. ...`；无题号的多题或不完整批次需要校正，避免混题。不支持自动读取整页多栏题目的顺序，请每次框选一列。
 
-截图仅保留在内存供 OCR 处理，不写入图片文件，不上传；文字识别和推理均在本机完成。识别文字会出现在窗口中，成功答案和引用按下述规则缓存。OCR 仍可能在高置信度下识别错误，检测通过不代表题目一定识别正确。没有额外的 OCR 识别费用。
-
-多显示器时只扫描主屏幕，不跟随鼠标；先把题目移到主屏幕。屏幕受保护、远程桌面、系统权限、过小字体或复杂排版可能导致黑屏或识别失败。Linux Wayland 可能不支持该截屏方式，macOS 需要给运行 Python 的终端/应用屏幕录制权限。
-
-右键悬浮图标 → **查看结果 / 手动粘贴** 仍可手动输入，例如：
+手动输入示例：
 
 ```text
-Which form of intellectual property protects an invention?
+1. Which form of intellectual property protects an invention?
 A. Patent
 B. Trademark
 C. Copyright
 D. Franchising
+
+2. Which term identifies a brand?
+A. Patent
+B. Trademark
+C. Trade secret
+D. Business plan
 ```
 
-点击“显示答案”。程序本地检索最多 4 页、每页最多 1800 字符，再让模型检查各选项（包括 NOT/EXCEPT）。显示答案、中文解释和讲义原文；PDF 页码按文件实际页序计算。`?` 表示证据不足或低置信度，请自行核对。
+多题按顺序逐题推理，总时间可能较长。重复题目可命中本地缓存；在校正窗口勾选“重新推理”可绕过缓存。新扫描会替换上次结果，不是累计的历史答题记录。
 
-- 无相关文本时直接显示 `?`，不调用模型。英文关键词匹配英文讲义效果较好；纯中文题目可能检索不到相关内容。
-- 只支持带文本的 PDF，扫描件先进行 OCR。图片和复杂表格可能提取不完整。
-- 置信度是模型自评，不是正确率；引用编号有效不等于推理正确。小模型更容易在复杂、否定或模糊题目上出错。
-- 相同题目、模型名、讲义内容使用缓存；勾选“重新推理”绕过缓存。不确定答案不缓存。模型在内存中保留约 30 分钟以减少再次加载；退出窗口后 Ollama 可能继续占用内存，可执行 `ollama stop qwen2.5:3b` 释放。
-- 单次本地推理超时为 300 秒。超时不一定让 Ollama 立即停止后台运算，避免连续重复提交。没有保证响应时间。
-- 本工具只在用户点击时截取一次画面并识别文字，不持续录屏、不监听剪贴板，也不包含隐藏/规避检测功能。
+## 识别与准确率
 
-## 模型与本地数据
+- 只对选区执行 OCR，较小选区适度放大（最多 2 倍）并添加边缘留白，保留英文大小写、NOT/EXCEPT、数字和标点，不自动改写英文题目。
+- OCR 置信度检查阈值从 0.65 提高为 0.80。有低置信度文字、缺少选项、缺少题干或题号不连续时要求校正，不自动猜题。高置信度仍可能识别错误，阈值不是实际正确率。
+- 相比整屏扫描，框选能排除无关内容，但尚未通过真实题目集测量准确率提升幅度。请放大网页文字；OCR 不能恢复本来不可见或模糊的内容。
+- 题干和四个选项都必须在选区内，并保留 A/B/C/D 标签。模型结论仍可能出错。
+- 讲义检索使用英文关键词，在本地选择最多 4 页、每页最多 1800 字符。图片和复杂表格可能提取不完整；扫描 PDF 需要预先 OCR。没有讲义依据时输出 `?`。
 
-默认 `qwen2.5:3b` 是速度、内存和能力的折中。若你愿意等待更久且内存充足，可先下载 `ollama pull qwen2.5:7b`，再在 PowerShell 中设置：
+## 本地数据与模型
 
-```powershell
-$env:MCQ_MODEL = "qwen2.5:7b"
-.\.venv-py312\Scripts\python.exe app.py
-```
+截图在内存中取得一次主屏幕图像，选择区域后只将裁剪图交给 OCR，不保存图片、不上传，不持续截屏或监听剪贴板。程序不包含隐藏或规避检测功能。OCR 使用 RapidOCR 软件包内的 ONNX 权重，不需要 Tesseract、OCR key 或额外在线识别服务；初始化 OCR 时关闭 ONNX Runtime 可选遥测。
 
-7B 不保证适合所有 16GB 电脑；显卡显存、其他程序和上下文都会影响性能。保持 3B 是默认建议。不要设置远程模型或 cloud 模型。更换其他模型需要支持 Ollama 的结构化 JSON 输出。`.env.example` 仅供参考，程序不自动加载 `.env`。
+软件只连接固定本机地址 `127.0.0.1:11434`，不使用系统代理，不跟随重定向；拒绝 cloud 名称和 Ollama 报告的远程模型。Ollama 是独立软件，下载/升级由用户控制。安装完成后可断网运行。
 
-成功答案与引用缓存于 `~/.mcq-study/answers.json`；Windows 通常在 `C:\Users\你的用户名\.mcq-study\answers.json`。删除文件可清空；`MCQ_DATA_DIR` 可改变目录。题目只作为哈希键保存，但解释和引用可能包含题目信息。旧云端版本缓存不会复用。替换讲义后重启会自动使旧讲义缓存失效；同名模型更新后请手动清空缓存。
+成功答案及引用仍在内部缓存于 `~/.mcq-study/answers.json`，答案窗口不展示引用或解释。Windows 通常位于 `C:\Users\你的用户名\.mcq-study\answers.json`。题目作为哈希键，但解释和引用可能包含题目信息。删除缓存文件可清空；`MCQ_DATA_DIR` 可改目录。替换讲义后重启会使旧缓存失效，同名模型更新后需手动清空。
 
-如曾设置 `MCQ_API_KEY`，新版不会读取，可自行从系统环境变量中删除。程序不下载模型、不请求互联网服务、不上传题目；Ollama 是独立软件，其升级或模型下载由你控制。可在完成安装后断网运行。
+默认 `qwen2.5:3b`，如内存和显卡资源足够可下载 `qwen2.5:7b` 并通过 `MCQ_MODEL` 选择；7B 可能更慢，也不保证适合所有 16GB 电脑。模型需要支持 Ollama 结构化输出。`.env.example` 仅供参考，不会自动加载。旧 `MCQ_API_KEY` 不再读取。
 
-## macOS / Linux
+模型在内存中保留约 30 分钟；退出窗口后可运行 `ollama stop qwen2.5:3b` 释放。单题超时为 300 秒，超时不保证后台立即停算，避免连续重复提交。
 
-安装对应版本的 Ollama 并下载 `qwen2.5:3b`。macOS 建议安装 python.org 的 Python 3.12（包含 Tk）；Linux 需要图形桌面和与你的 Python 匹配的 Tk/venv 包，例如 `python3-tk python3-venv`。在项目目录执行：
+## 升级和故障排查
+
+已使用 Git 的用户执行 `git pull origin main`；ZIP 用户下载最新版解压，并保留/复制自己的 `notes/`。运行 `setup_windows.bat` 后再启动 `start_windows.bat`；不需要重新下载 Ollama 模型。
+
+若提示 Python runtime not found，先安装上方链接的 Python 3.12 64 位版，再执行 `py -3.12 --version` 验证。若 pip 提示 OCR 要求 `<3.13`，不要强制忽略版本限制或只升级 pip；请使用新版脚本的 `.venv-py312`，不要沿用旧的 `.venv`。
+
+多显示器只支持主显示器。Windows DPI 设置、远程桌面或受保护画面可能影响选择或导致黑屏。macOS 需屏幕录制权限；Linux Wayland 可能不支持当前截图方式。
+
+macOS/Linux 需安装 Python 3.12（带 Tk）、Ollama 和模型，在图形桌面运行：
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
-# 把 PDF 复制到 notes 后：
-.venv/bin/python check_setup.py
 .venv/bin/python app.py
 ```
 
-## 验证与限制
+## 验证
 
 ```powershell
 .\.venv-py312\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-27 项自动测试覆盖原有本地问答流程、选项识别（含同行及分离标签）、多道题/缺失题干/空选项拒绝、低置信度处理、截屏失败、主屏幕选择与颜色通道，以及真实离线 OCR → 题目提取 → 模拟模型答题流程。OCR 测试使用程序生成的测试图片和真实附带权重；本机通信测试使用模拟 Ollama，不能代表真实模型准确率。
+40 项测试覆盖本地问答、缓存、引用、题目拆分、裁剪边界、小字放大、纯答案格式、单题和多题真实英文 OCR，以及模拟模型的答题流程。真实 OCR 使用生成的测试图；本机模型通信使用模拟 Ollama，不代表真实模型准确率。已验证 Python 3.12 / Windows 64 位依赖安装包可解析，Python 编译和依赖检查通过。
 
-开发云端已用用户提供的 13 份 PDF 提取出 352 个文本页面，并用真实 OCR 成功识别生成的英文 MCQ 图片。云端未安装 Ollama，也没有可用图形显示器，未完成真实桌面截屏、窗口交互或模型推理验证；Windows 安装脚本尚未在 Windows 上实测。模型的速度、准确率和你的电脑兼容性需要在本机验证。Python 编译检查和依赖检查也已通过。
-
-## 从旧版升级
-
-在项目目录执行 `git pull origin main`（或重新下载 ZIP），然后重新运行 `setup_windows.bat` 安装新增的截屏和本地 OCR 依赖，最后启动 `start_windows.bat`。保留 `notes/` 中的 PDF 和已下载的 Ollama 模型，无需重新下载。
-
-## 修复 Python 版本安装错误
-
-如果 pip 提示 `rapidocr-onnxruntime==1.4.4` 要求 `Requires-Python >=3.6,<3.13` 且 `No matching distribution found`，通常是旧脚本的 `py -3` 选择了较新的 Python。升级 pip 不能修复这个版本限制，也不要用 `--ignore-requires-python` 强装。
-
-安装上文链接的 **Python 3.12.10 64 位版**，获取本项目最新代码，重新运行 `setup_windows.bat`，再运行 `start_windows.bat`。新版使用独立的 `.venv-py312`，保留旧 `.venv`、`notes/` 和已下载的 Ollama 模型。下载 ZIP 的用户请确保在新版项目目录里操作，把原来的 PDF 复制到新版 `notes/`。
-
-可以在 PowerShell 执行 `py -3.12 --version` 确认已安装。若仍显示找不到 Python 3.12，检查是否安装了 3.12 的 Python Launcher 组件，并重新打开终端。Windows 脚本已加入版本、64 位架构检查和具体失败提示，但尚未在真实 Windows 系统执行验证。
+云端已读取用户提供的 13 份 PDF、352 页文本；没有可用图形显示器或实际 Ollama 模型，未完成新版框选窗口、真实 Windows DPI/多屏或模型推理实机验证。
