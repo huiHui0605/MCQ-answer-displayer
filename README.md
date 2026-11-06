@@ -8,7 +8,7 @@ Windows 桌面悬浮小窗口。点击 **扫描 MCQ**，截取一次当前主屏
 
 ## Windows 安装
 
-1. 安装 [Python 3.12](https://www.python.org/downloads/)（保留 Tcl/Tk 和 Python Launcher 组件）和 [Ollama Windows 版](https://ollama.com/download/windows)。若用 Git 克隆，也要安装 Git；不想安装 Git 可在 GitHub 点击 **Code → Download ZIP** 后解压。
+1. 安装 [Python 3.12.10 的 Windows installer (64-bit)](https://www.python.org/downloads/release/python-31210/)（保留 Tcl/Tk 和 Python Launcher 组件；OCR 依赖要求 Python < 3.13，不能使用 3.13/3.14 或更新版本）和 [Ollama Windows 版](https://ollama.com/download/windows)。若用 Git 克隆，也要安装 Git；不想安装 Git 可在 GitHub 点击 **Code → Download ZIP** 后解压。
 2. 打开 Ollama 应用，确保它在后台运行。在 PowerShell 执行一次模型下载：
 
    ```powershell
@@ -24,17 +24,17 @@ Windows 桌面悬浮小窗口。点击 **扫描 MCQ**，截取一次当前主屏
    ```
 
    已经克隆的用户在项目目录执行 `git pull origin main`。下载 ZIP 的用户直接打开解压后的项目目录。
-4. 双击 `setup_windows.bat` 安装 Python 依赖。
+4. 双击 `setup_windows.bat`。脚本明确选择 64 位 Python 3.12，并在 `.venv-py312` 中安装依赖；会保留旧的 `.venv`，无需卸载其他 Python 版本。
 5. 把你自己的 lecture note PDF 复制到项目的 `notes` 文件夹。GitHub **不包含教材 PDF 或提取后的教材正文**；云端用于验证的 13 份文件仍保留在本地，未上传。
 6. 双击 `start_windows.bat`。它先检查 PDF 文本和本机模型，成功后打开悬浮窗口。不需要填写任何 key。
 
 若希望手动安装和启动，使用：
 
 ```powershell
-py -3 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe check_setup.py
-.\.venv\Scripts\python.exe app.py
+py -3.12 -m venv .venv-py312
+.\.venv-py312\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv-py312\Scripts\python.exe check_setup.py
+.\.venv-py312\Scripts\python.exe app.py
 ```
 
 每次启动时都需要 Ollama 后台在运行，但不需要重新下载模型。`check_setup.py` 只检查文件和模型，不验证推理准确率。
@@ -76,7 +76,7 @@ D. Franchising
 
 ```powershell
 $env:MCQ_MODEL = "qwen2.5:7b"
-.\.venv\Scripts\python.exe app.py
+.\.venv-py312\Scripts\python.exe app.py
 ```
 
 7B 不保证适合所有 16GB 电脑；显卡显存、其他程序和上下文都会影响性能。保持 3B 是默认建议。不要设置远程模型或 cloud 模型。更换其他模型需要支持 Ollama 的结构化 JSON 输出。`.env.example` 仅供参考，程序不自动加载 `.env`。
@@ -87,10 +87,10 @@ $env:MCQ_MODEL = "qwen2.5:7b"
 
 ## macOS / Linux
 
-安装对应版本的 Ollama 并下载 `qwen2.5:3b`。macOS 建议安装 python.org 的 Python（包含 Tk）；Linux 需要图形桌面和与你的 Python 匹配的 Tk/venv 包，例如 `python3-tk python3-venv`。在项目目录执行：
+安装对应版本的 Ollama 并下载 `qwen2.5:3b`。macOS 建议安装 python.org 的 Python 3.12（包含 Tk）；Linux 需要图形桌面和与你的 Python 匹配的 Tk/venv 包，例如 `python3-tk python3-venv`。在项目目录执行：
 
 ```bash
-python3 -m venv .venv
+python3.12 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 # 把 PDF 复制到 notes 后：
 .venv/bin/python check_setup.py
@@ -100,7 +100,7 @@ python3 -m venv .venv
 ## 验证与限制
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+.\.venv-py312\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
 27 项自动测试覆盖原有本地问答流程、选项识别（含同行及分离标签）、多道题/缺失题干/空选项拒绝、低置信度处理、截屏失败、主屏幕选择与颜色通道，以及真实离线 OCR → 题目提取 → 模拟模型答题流程。OCR 测试使用程序生成的测试图片和真实附带权重；本机通信测试使用模拟 Ollama，不能代表真实模型准确率。
@@ -110,3 +110,11 @@ python3 -m venv .venv
 ## 从旧版升级
 
 在项目目录执行 `git pull origin main`（或重新下载 ZIP），然后重新运行 `setup_windows.bat` 安装新增的截屏和本地 OCR 依赖，最后启动 `start_windows.bat`。保留 `notes/` 中的 PDF 和已下载的 Ollama 模型，无需重新下载。
+
+## 修复 Python 版本安装错误
+
+如果 pip 提示 `rapidocr-onnxruntime==1.4.4` 要求 `Requires-Python >=3.6,<3.13` 且 `No matching distribution found`，通常是旧脚本的 `py -3` 选择了较新的 Python。升级 pip 不能修复这个版本限制，也不要用 `--ignore-requires-python` 强装。
+
+安装上文链接的 **Python 3.12.10 64 位版**，获取本项目最新代码，重新运行 `setup_windows.bat`，再运行 `start_windows.bat`。新版使用独立的 `.venv-py312`，保留旧 `.venv`、`notes/` 和已下载的 Ollama 模型。下载 ZIP 的用户请确保在新版项目目录里操作，把原来的 PDF 复制到新版 `notes/`。
+
+可以在 PowerShell 执行 `py -3.12 --version` 确认已安装。若仍显示找不到 Python 3.12，检查是否安装了 3.12 的 Python Launcher 组件，并重新打开终端。Windows 脚本已加入版本、64 位架构检查和具体失败提示，但尚未在真实 Windows 系统执行验证。

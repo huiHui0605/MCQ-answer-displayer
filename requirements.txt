@@ -1,3 +1,4 @@
+# Use 64-bit Python 3.12; RapidOCR 1.4.4 requires Python < 3.13.
 PyMuPDF==1.26.7
 mss==10.1.0
 rapidocr-onnxruntime==1.4.4
