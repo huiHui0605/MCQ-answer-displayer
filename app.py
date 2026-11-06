@@ -1,9 +1,8 @@
 """Small, user-controlled desktop study window. No capture or global hooks."""
-import os
 import queue
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, simpledialog
+from tkinter import messagebox, scrolledtext
 from core import Engine, load_pages
 
 
@@ -28,7 +27,7 @@ def main():
             return
         panel = tk.Toplevel(root)
         state['panel'] = panel
-        panel.title('MCQ · 练习助手')
+        panel.title('MCQ · 本地离线练习助手')
         panel.geometry('540x650')
         panel.attributes('-topmost', True)
         panel.protocol('WM_DELETE_WINDOW', open_panel)
@@ -51,14 +50,9 @@ def main():
             if state['engine'] is None:
                 messagebox.showinfo('准备中', '讲义仍在索引，稍后再试。')
                 return
-            if not os.environ.get('MCQ_API_KEY', '').strip():
-                key = simpledialog.askstring('OpenAI API key', '输入自己的 API key（只保存在本次进程内存中）：', show='*', parent=panel)
-                if not key or not key.strip():
-                    return
-                os.environ['MCQ_API_KEY'] = key.strip()
             q, force = question.get('1.0', 'end'), refresh.get()
             state['busy'] = True
-            display('正在检索讲义并请求 AI…')
+            display('正在本机检索讲义并推理…首次加载或 CPU 推理可能需要数分钟。')
             threading.Thread(target=worker, args=(lambda: state['engine'].answer(q, force),), daemon=True).start()
         tk.Button(row, text='显示答案', command=solve).pack(side='right')
         question.focus_set()
