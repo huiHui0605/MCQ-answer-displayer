@@ -1,10 +1,13 @@
 """Check local files and the installed Ollama model; no inference or downloads."""
 import sys
+from importlib.metadata import version
 from core import check_model, load_pages
 
 
 def main():
     try:
+        print(f'Screen capture: mss {version("mss")}')
+        print(f'Local OCR: RapidOCR {version("rapidocr-onnxruntime")}')
         pages, _ = load_pages()
         print(f'PDF text pages: {len(pages)}')
         print(f'Local model: {check_model()}')
