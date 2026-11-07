@@ -5,10 +5,12 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
 from answers import answer_questions
-from auto_scan import scan_screen, scan_selected_area
+from auto_scan import scan_selected_area
 from core import Engine, load_pages, check_model
 from screen_scan import ScreenReader, enable_dpi_awareness, prepare_questions, capture_screen
 from settings import load_settings, save_settings, preferred_model, make_region, apply_region
+
+IDLE_SYMBOL = '☁'
 
 
 class FloatingApp:
@@ -17,7 +19,6 @@ class FloatingApp:
         self.engine, self.reader = engine, reader
         self.events = queue.Queue()
         self.settings = load_settings()
-        self.capture_action = 'scan'
         self.selector = None
         self.mode = 'loading'
         self.last_text = ''
@@ -36,7 +37,7 @@ class FloatingApp:
             root.attributes('-transparentcolor', '#ff00ff')
         except tk.TclError:
             # Other desktops may show a square background; no hidden capture features.
-            root.configure(bg='#eef2ff')
+            root.configure(bg='#f2f4f5')
         self.canvas = tk.Canvas(root, bg=root.cget('bg'), highlightthickness=0, cursor='hand2')
         self.canvas.pack(fill='both', expand=True)
         self.canvas.bind('<ButtonPress-1>', self.press)
@@ -51,7 +52,7 @@ class FloatingApp:
         if engine is not None and reader is not None:
             self.engine.model = preferred_model(self.settings)
             self.mode = 'idle'
-            self.circle('MCQ')
+            self.circle(IDLE_SYMBOL)
         else:
             self.background('ready', lambda: (Engine(*load_pages(), model=preferred_model(self.settings)), ScreenReader()))
         root.after(80, self.poll)
@@ -71,30 +72,31 @@ class FloatingApp:
         self.root.deiconify()
 
     def circle(self, label):
-        self.place(68, 68)
-        self.canvas.configure(scrollregion=(0, 0, 68, 68))
+        self.place(52, 52)
+        self.canvas.configure(scrollregion=(0, 0, 52, 52))
         self.canvas.yview_moveto(0)
         self.canvas.delete('all')
-        self.canvas.create_oval(2, 2, 66, 66, fill='#2563eb', outline='#93c5fd', width=2)
-        self.canvas.create_text(34, 34, text=label, fill='white', font=('Segoe UI', 11, 'bold'))
+        self.canvas.create_oval(2, 2, 50, 50, fill='#edf0f2', outline='#dce2e6', width=1)
+        self.canvas.create_text(26, 26, text=label, fill='#8a969e',
+                                font=('Segoe UI Symbol', 18) if label == IDLE_SYMBOL else ('Segoe UI', 10))
 
     def show_answers(self, text):
         self.mode = 'answer'
         self.last_answers = text
         lines = max(1, len(text.splitlines()))
-        height = min(max(70, lines*32+24), max(70, self.root.winfo_screenheight()-80))
-        self.place(180, height)
+        height = min(max(52, lines*26+20), max(52, self.root.winfo_screenheight()-80))
+        self.place(140, height)
         self.canvas.delete('all')
-        self.canvas.configure(scrollregion=(0, 0, 180, max(height, lines*32+24)))
+        self.canvas.configure(scrollregion=(0, 0, 140, max(height, lines*26+20)))
         self.canvas.yview_moveto(0)
-        self.canvas.create_rectangle(0, 0, 180, max(height, lines*32+24), fill='#eff6ff', outline='#2563eb', width=2)
-        self.canvas.create_text(16, 12, anchor='nw', text=text, fill='#172554', font=('Consolas', 18, 'bold'))
+        self.canvas.create_rectangle(0, 0, 140, max(height, lines*26+20), fill='#f6f7f8', outline='#dce2e6', width=1)
+        self.canvas.create_text(12, 10, anchor='nw', text=text, fill='#65717a', font=('Consolas', 14))
 
     def reset(self):
         if self.mode in ('busy', 'loading'):
             return
         self.mode = 'idle'
-        self.circle('MCQ')
+        self.circle(IDLE_SYMBOL)
 
     def press(self, event):
         self.drag = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y(), False)
@@ -122,9 +124,7 @@ class FloatingApp:
 
     def menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
-        menu.add_command(label='扫描一次', command=self.scan)
-        menu.add_command(label='设置题目区域（记住）', command=self.select_region)
-        menu.add_command(label='清除选区，恢复整屏', command=self.clear_region)
+        menu.add_command(label='框选题目', command=self.scan)
         models=tk.Menu(menu,tearoff=0)
         for name in ('qwen2.5:3b','qwen2.5:7b'):
             models.add_command(label=name,command=lambda n=name:self.switch_model(n))
@@ -140,7 +140,7 @@ class FloatingApp:
         finally:
             menu.grab_release()
 
-    def scan(self, action='scan'):
+    def scan(self):
         if self.mode in ('busy', 'loading'):
             return
         if self.engine is None or self.reader is None:
@@ -148,7 +148,6 @@ class FloatingApp:
             self.show_answers('?')
             return
         self.mode = 'busy'
-        self.capture_action = action
         self.last_error = ''
         if self.editor is not None and self.editor.winfo_exists():
             self.editor.destroy()
@@ -157,33 +156,16 @@ class FloatingApp:
         # Let our own window disappear before the single screenshot.
         self.root.after(300, lambda: self.background('captured', capture_screen))
 
-    def select_region(self):
-        self.scan(action='select')
-
-    def clear_region(self):
-        if self.mode in ('busy','loading'):
-            return
-        updated={**self.settings}
-        updated.pop('region',None)
-        try:
-            save_settings(updated)
-            self.settings=updated
-            self.reset()
-        except OSError as exc:
-            self.last_error=str(exc)
-            self.show_answers('?')
-
     def switch_model(self,name):
         if self.mode in ('busy','loading'):
             return
         self.mode='busy'
-        self.circle('模型…')
+        self.circle('…')
         self.background('model_ready',lambda:check_model(name))
 
     def process_image(self,image):
-        selected = self.settings.get('region')
-        cropped = apply_region(image,selected)
-        return scan_selected_area(self.reader,cropped) if selected else scan_screen(self.reader,image)
+        # Only the current user-drawn crop is passed here; old saved regions are ignored.
+        return scan_selected_area(self.reader,image)
 
     def choose_region(self,image):
         from PIL import Image,ImageTk
@@ -198,13 +180,13 @@ class FloatingApp:
         photo=ImageTk.PhotoImage(Image.fromarray(image[:,:,::-1]))
         canvas.image=photo
         canvas.create_image(0,0,image=photo,anchor='nw')
-        canvas.create_text(20,20,anchor='nw',fill='red',text='框选完整题干和选项；只设置一次，之后点击自动扫描此区域；Esc 取消',font=('',14,'bold'))
+        canvas.create_text(20,20,anchor='nw',fill='#526b7a',text='拖动框选完整题干与选项；Esc 或右键取消',font=('',14,'bold'))
         drag={'start':None,'box':None}
         def press(event):
             drag['start']=(event.x,event.y)
             if drag['box'] is not None:
                 canvas.delete(drag['box'])
-            drag['box']=canvas.create_rectangle(event.x,event.y,event.x,event.y,outline='red',width=3)
+            drag['box']=canvas.create_rectangle(event.x,event.y,event.x,event.y,outline='#879eae',width=2)
         def move(event):
             if drag['start']:
                 canvas.coords(drag['box'],*drag['start'],event.x,event.y)
@@ -212,15 +194,13 @@ class FloatingApp:
             overlay.destroy()
             self.selector=None
             self.mode='idle'
-            self.circle('MCQ')
+            self.circle(IDLE_SYMBOL)
         def release(event):
             if not drag['start']:
                 return
             try:
                 region=make_region(image.shape,drag['start'],(event.x,event.y))
-                updated={**self.settings,'region':region}
-                save_settings(updated)
-                self.settings=updated
+                cropped=apply_region(image,region)
             except (ValueError,OSError) as exc:
                 cancel()
                 self.last_error=str(exc)
@@ -228,17 +208,18 @@ class FloatingApp:
                 return
             overlay.destroy()
             self.selector=None
-            self.circle('OCR…')
-            self.background('scanned',lambda:self.process_image(image))
+            self.circle('…')
+            self.background('scanned',lambda:self.process_image(cropped))
         canvas.bind('<ButtonPress-1>',press)
         canvas.bind('<B1-Motion>',move)
         canvas.bind('<ButtonRelease-1>',release)
         overlay.bind('<Escape>',lambda e:cancel())
+        overlay.bind('<Button-3>',lambda e:cancel())
         overlay.focus_force()
 
     def solve(self, questions, refresh=False):
         self.mode = 'busy'
-        self.circle('AI…')
+        self.circle('…')
         self.background('answer', lambda: answer_questions(self.engine, questions, refresh,
             lambda done, total: self.events.put(('progress', f'{done}/{total}'))))
 
@@ -281,20 +262,16 @@ class FloatingApp:
                 if kind == 'ready':
                     self.engine, self.reader = value
                     self.mode = 'idle'
-                    self.circle('MCQ')
+                    self.circle(IDLE_SYMBOL)
                 elif kind == 'captured':
-                    if self.capture_action == 'select':
-                        try:
-                            self.choose_region(value)
-                        except Exception as exc:
-                            if self.selector is not None:
-                                self.selector.destroy()
-                                self.selector=None
-                            self.last_error=str(exc)
-                            self.show_answers('?')
-                    else:
-                        self.circle('OCR…')
-                        self.background('scanned', lambda image=value: self.process_image(image))
+                    try:
+                        self.choose_region(value)
+                    except Exception as exc:
+                        if self.selector is not None:
+                            self.selector.destroy()
+                            self.selector=None
+                        self.last_error=str(exc)
+                        self.show_answers('?')
                 elif kind == 'model_ready':
                     updated={**self.settings,'model':value}
                     try:
@@ -302,7 +279,7 @@ class FloatingApp:
                         self.settings=updated
                         self.engine.model=value
                         self.mode='idle'
-                        self.circle('MCQ')
+                        self.circle(IDLE_SYMBOL)
                     except OSError as exc:
                         self.last_error=str(exc)
                         self.show_answers('?')

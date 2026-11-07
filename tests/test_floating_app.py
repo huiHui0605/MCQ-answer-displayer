@@ -2,7 +2,7 @@
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import unittest
-from app import FloatingApp
+from app import FloatingApp, IDLE_SYMBOL
 from screen_scan import ScanResult, Question
 from answers import Answers
 
@@ -38,7 +38,7 @@ class FloatingTests(unittest.TestCase):
         self.click()
         self.assertEqual(self.app.mode,'idle')
         self.app.background.assert_not_called()
-        self.canvas.create_text.assert_called_with(34,34,text='MCQ',fill='white',font=('Segoe UI',11,'bold'))
+        self.assertEqual(self.canvas.create_text.call_args.kwargs['text'],IDLE_SYMBOL)
 
     def test_repeated_scan_answer_click_cycle(self):
         for _ in range(2):
@@ -46,9 +46,11 @@ class FloatingTests(unittest.TestCase):
             self.assertEqual(self.app.mode,'busy')
             self.root.withdraw.assert_called()
             # Capture completion is delivered once, OCR once, then local answers.
-            self.app.events.put(('captured',object()))
-            self.app.poll()
-            self.assertEqual(self.app.background.call_args.args[0],'scanned')
+            image=object()
+            self.app.events.put(('captured',image))
+            with patch.object(self.app,'choose_region') as choose:
+                self.app.poll()
+                choose.assert_called_once_with(image)
             self.app.events.put(('scanned',ScanResult('',True,questions=[Question('1','question')])) )
             self.app.poll()
             self.assertEqual(self.app.background.call_args.args[0],'answer')
@@ -72,15 +74,15 @@ class FloatingTests(unittest.TestCase):
         self.assertEqual(self.app.mode,'idle')
         self.app.background.assert_not_called()
 
-    def test_saved_area_is_applied_before_ocr(self):
+    def test_current_crop_is_used_instead_of_previous_saved_region(self):
         import numpy as np
         from settings import make_region
         image=np.zeros((800,1200,3),dtype=np.uint8)
         self.app.settings={'region':make_region(image.shape,(100,100),(900,700))}
-        with patch('app.scan_selected_area') as scan,patch('app.scan_screen') as full:
-            self.app.process_image(image)
-            self.assertEqual(scan.call_args.args[1].shape,(600,800,3))
-            full.assert_not_called()
+        crop=image[50:400,70:600].copy()
+        with patch('app.scan_selected_area') as scan:
+            self.app.process_image(crop)
+            self.assertEqual(scan.call_args.args[1].shape,(350,530,3))
 
     def test_model_choice_is_saved_and_applied(self):
         self.app.events.put(('model_ready','qwen2.5:7b'))
@@ -90,15 +92,45 @@ class FloatingTests(unittest.TestCase):
         self.assertEqual(self.app.engine.model,'qwen2.5:7b')
         self.assertEqual(self.app.mode,'idle')
 
-    def test_area_selection_is_one_off_not_every_click(self):
-        self.app.capture_action='select'
-        self.app.events.put(('captured',object()))
-        with patch.object(self.app,'choose_region') as select:
-            self.app.poll()
-            select.assert_called_once()
-        self.app.mode='idle'
-        self.app.scan()
-        self.assertEqual(self.app.capture_action,'scan')
+    def test_every_scan_opens_a_new_selection_before_ocr(self):
+        for _ in range(2):
+            self.app.mode='idle'
+            self.app.scan()
+            self.app.events.put(('captured',object()))
+            with patch.object(self.app,'choose_region') as select:
+                self.app.poll()
+                select.assert_called_once()
+        self.app.background.assert_not_called()
+
+    def test_selector_release_crops_only_this_drag_without_saving_region(self):
+        import numpy as np
+        image=np.zeros((800,1200,3),dtype=np.uint8)
+        original_settings={'model':'qwen2.5:3b','region':{'old':'unused'}}
+        self.app.settings=original_settings.copy()
+        with patch('app.tk.Toplevel'),patch('app.tk.Canvas') as canvas_factory,patch('PIL.ImageTk.PhotoImage'),patch('app.save_settings') as save:
+            canvas=canvas_factory.return_value
+            self.app.choose_region(image)
+            handlers={call.args[0]:call.args[1] for call in canvas.bind.call_args_list}
+            handlers['<ButtonPress-1>'](SimpleNamespace(x=100,y=120))
+            handlers['<ButtonRelease-1>'](SimpleNamespace(x=900,y=720))
+            save.assert_not_called()
+            self.assertEqual(self.app.settings,original_settings)
+            kind,fn=self.app.background.call_args.args
+            self.assertEqual(kind,'scanned')
+            with patch('app.scan_selected_area') as scan:
+                fn()
+                self.assertEqual(scan.call_args.args[1].shape,(600,800,3))
+
+    def test_selector_escape_returns_to_icon_without_scanning(self):
+        import numpy as np
+        with patch('app.tk.Toplevel') as top,patch('app.tk.Canvas'),patch('PIL.ImageTk.PhotoImage'):
+            overlay=top.return_value
+            self.app.choose_region(np.zeros((800,1200,3),dtype=np.uint8))
+            handlers={call.args[0]:call.args[1] for call in overlay.bind.call_args_list}
+            handlers['<Escape>'](SimpleNamespace())
+            self.assertEqual(self.app.mode,'idle')
+            self.assertIsNone(self.app.selector)
+            self.app.background.assert_not_called()
 
     def test_corrected_editor_uses_question_text_sent_to_model(self):
         result=ScanResult('Home menu unrelated',True,questions=[Question('1','actual question')])
