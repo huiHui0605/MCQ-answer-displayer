@@ -10,7 +10,9 @@ def main():
         print(f'Screen capture: mss {version("mss")}')
         print(f'Local OCR: RapidOCR {version("rapidocr-onnxruntime")}')
         pages, _ = load_pages()
-        print(f'PDF text pages: {len(pages)}')
+        print(f'PDF reference pages: {len(pages)} (notes are optional)')
+        if not pages:
+            print('No readable notes: the local model can answer from its own knowledge.')
         print(f'Local model: {check_model(preferred_model(load_settings()))}')
     except Exception as exc:
         print(str(exc), file=sys.stderr)

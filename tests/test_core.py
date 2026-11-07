@@ -54,14 +54,19 @@ class CoreTests(unittest.TestCase):
         with self.infer(ANSWER):
             self.assertFalse(changed.answer(QUESTION)['cached'])
 
-    def test_invalid_citation_rejected(self):
+    def test_invalid_citation_is_removed_without_blocking_knowledge(self):
         with self.infer({**ANSWER, 'sources': [99]}):
-            with self.assertRaises(ValueError): self.engine.answer(QUESTION)
+            result=self.engine.answer(QUESTION)
+            self.assertEqual(result['answer'],'A')
+            self.assertEqual(result['references'],[])
+            self.assertEqual(result['basis'],'general_knowledge')
 
-    def test_unsupported_answer_not_cached(self):
+    def test_general_knowledge_answer_can_be_cached_without_citations(self):
         with self.infer({**ANSWER, 'sources': [], 'evidence': []}):
-            self.assertEqual(self.engine.answer(QUESTION)['answer'], '?')
-            self.assertEqual(self.engine.cache, {})
+            result=self.engine.answer(QUESTION)
+            self.assertEqual(result['answer'],'A')
+            self.assertEqual(result['references'],[])
+            self.assertTrue(self.engine.cache)
 
     def test_low_confidence_abstains(self):
         with self.infer({**ANSWER, 'confidence': 'low'}):
@@ -84,10 +89,14 @@ class CoreTests(unittest.TestCase):
         with patch('urllib.request.OpenerDirector.open', side_effect=TimeoutError):
             with self.assertRaisesRegex(ValueError, '超时'): self.engine.answer(QUESTION)
 
-    def test_no_retrieved_evidence_does_not_call_model(self):
-        with patch.object(self.engine, 'retrieve', return_value=[]), patch('core.local_request') as request:
-            self.assertEqual(self.engine.answer(QUESTION)['answer'], '?')
-            request.assert_not_called()
+    def test_no_retrieved_evidence_still_calls_local_model(self):
+        with patch.object(self.engine, 'retrieve', return_value=[]), self.infer({**ANSWER,'sources':[],'evidence':[]}) as request:
+            result=self.engine.answer(QUESTION)
+            self.assertEqual(result['answer'],'A')
+            self.assertEqual(result['references'],[])
+            self.assertEqual(request.call_count,4)
+            payload=request.call_args.args[1]
+            self.assertEqual(json.loads(payload['messages'][1]['content'])['lecture_excerpts'],'')
 
     def test_truncated_response_rejected(self):
         reply = {**self.reply(ANSWER), 'done_reason': 'length'}

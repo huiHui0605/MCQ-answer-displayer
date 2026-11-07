@@ -42,20 +42,23 @@ class AccuracyTests(unittest.TestCase):
             self.assertEqual(self.engine.answer(Q)['answer'],'?')
             self.assertEqual(self.engine.cache,{})
 
-    def test_fabricated_evidence_rejected_without_verification_call(self):
-        with self.requests(response('A','A made-up statement about patents.')) as request:
-            self.assertEqual(self.engine.answer(Q)['answer'],'?')
-            self.assertEqual(request.call_count,3)
-            self.assertEqual(self.engine.cache,{})
+    def test_fabricated_quotes_are_not_stored_as_lecture_references(self):
+        with self.requests(response('A','A made-up statement about patents.'),response('D')):
+            result=self.engine.answer(Q)
+            self.assertEqual(result['answer'],'A')
+            self.assertEqual(result['references'],[])
+            self.assertEqual(result['evidence'],[])
 
-    def test_evidence_from_unseen_end_of_long_page_is_rejected(self):
+    def test_quotes_from_unseen_page_text_are_not_treated_as_references(self):
         self.engine=core.Engine([{'file':'x.pdf','page':1,'text':'patent '*400+QUOTE}],'long')
-        with patch.object(self.engine,'retrieve',return_value=self.engine.pages), self.requests(response('A')):
-            self.assertEqual(self.engine.answer(Q)['answer'],'?')
+        with patch.object(self.engine,'retrieve',return_value=self.engine.pages), self.requests(response('A'),response('D')):
+            result=self.engine.answer(Q)
+            self.assertEqual(result['answer'],'A')
+            self.assertEqual(result['references'],[])
 
-    def test_missing_second_evidence_does_not_validate_first_answer(self):
-        with self.requests(response('A'),response('D','Unsupported words in the response.')):
-            self.assertEqual(self.engine.answer(Q)['answer'],'?')
+    def test_second_pass_needs_an_answer_not_a_lecture_quote(self):
+        with self.requests(response('A'),response('D','Not present in notes.')):
+            self.assertEqual(self.engine.answer(Q)['answer'],'A')
 
     def test_copyright_footer_removed_but_real_definition_kept(self):
         page='12 - 3\nCopyright © 2025 Pearson. All Rights Reserved\nCopyright protects original creative work.'
@@ -83,13 +86,17 @@ class AccuracyTests(unittest.TestCase):
             self.assertIn('D. All of the above',second)
             self.assertIn('A. Patent',second)
 
-    def test_medium_confidence_is_unknown(self):
+    def test_consistent_medium_confidence_can_use_general_knowledge(self):
         reply=response('A')
         data=json.loads(reply['message']['content'])
         data['confidence']='medium'
         reply['message']['content']=json.dumps(data)
-        with self.requests(reply):
-            self.assertEqual(self.engine.answer(Q)['answer'],'?')
+        second=response('D')
+        data2=json.loads(second['message']['content'])
+        data2['confidence']='medium'
+        second['message']['content']=json.dumps(data2)
+        with self.requests(reply,second):
+            self.assertEqual(self.engine.answer(Q)['answer'],'A')
 
     def test_missing_or_duplicate_option_not_inferred(self):
         for text in [Q+'\nA. Another',Q.replace('A. Patent','A. ')]:

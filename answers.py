@@ -13,11 +13,13 @@ def answer_questions(engine, questions: list[Question], refresh=False, progress=
     lines, errors = [], []
     for i, question in enumerate(questions, 1):
         try:
-            value = engine.answer(question.text, refresh) if question.text else {'answer': '?'}
+            value = engine.answer(question.text, refresh) if question.text else {'answer': '?', 'reason': '题目识别不完整或两遍 OCR 不一致，请重新框选或校正文字。'}
             letter = str(value.get('answer', '?'))
             letter = letter.upper() if letter.upper() in ('T','F') else letter.lower()
             if letter not in ('a', 'b', 'c', 'd', 'T', 'F'):
                 letter = '?'
+            if letter == '?' and value.get('reason'):
+                errors.append(value['reason'])
         except ValueError as exc:
             letter = '?'
             errors.append(str(exc))
