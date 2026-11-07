@@ -47,7 +47,10 @@ def prepare_question(lines):
     text = '\n'.join(unicodedata.normalize('NFKC', str(line)).strip() for line in lines)
     text = re.sub(r'(?<!\w)\(?([A-Da-d])\s*[.、:：)]\s*', r'\n\1. ', text)
     text = '\n'.join(line.strip() for line in text.splitlines() if line.strip())
-    labels = list(re.finditer(r'(?m)^([A-Da-d])(?:[.、:：)]\s*|[ \t]+|$)', text))
+    labels = list(re.finditer(r'(?m)^([A-Da-d])[.、:：)]\s*', text))
+    # An English stem such as "A patent is ..." is not an option label.
+    if [m.group(1).upper() for m in labels] != list('ABCD'):
+        labels = list(re.finditer(r'(?m)^([A-Da-d])(?:[.、:：)]\s*|[ \t]+|$)', text))
     if [m.group(1).upper() for m in labels] != list('ABCD'):
         return ScanResult(text, False, '没有识别到唯一一组顺序正确的 A/B/C/D 选项。请保留一道完整题目，校正文字后再答题。')
     # Canonicalize labels, including OCR boxes containing an isolated letter.
@@ -65,7 +68,7 @@ def prepare_question(lines):
 def prepare_questions(lines):
     """Split only explicitly numbered, consecutive questions in one column."""
     text = '\n'.join(unicodedata.normalize('NFKC', str(line)).strip() for line in lines)
-    marker = re.compile(r'(?im)^\s*(?:(?:question|q)\s*(\d{1,3})[.):]?(?:[ \t]+|$)|(\d{1,3})[.):](?:[ \t]+|$))')
+    marker = re.compile(r'(?im)^\s*(?:(?:question|q)\s*(\d{1,3})[.):]?(?:[ \t]+|$)|(\d{1,3})[.):](?:[ \t]+|(?=[A-Za-z])|$))')
     matches = list(marker.finditer(text))
     if not matches:
         result = prepare_question(lines)

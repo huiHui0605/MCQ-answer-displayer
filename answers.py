@@ -13,7 +13,7 @@ def answer_questions(engine, questions: list[Question], refresh=False, progress=
     lines, errors = [], []
     for i, question in enumerate(questions, 1):
         try:
-            value = engine.answer(question.text, refresh)
+            value = engine.answer(question.text, refresh) if question.text else {'answer': '?'}
             letter = str(value.get('answer', '?')).lower()
             if letter not in ('a', 'b', 'c', 'd'):
                 letter = '?'

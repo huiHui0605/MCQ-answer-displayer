@@ -10,7 +10,7 @@ from unittest.mock import patch
 import core
 
 QUESTION = 'What protects an invention?\nA. Patent\nB. Trademark\nC. Copyright\nD. Franchise'
-ANSWER = {'answer': 'A', 'confidence': 'high', 'explanation': 'Patent', 'sources': [1]}
+ANSWER = {'answer': 'A', 'confidence': 'high', 'explanation': 'Patent', 'sources': [1], 'evidence': [{'source': 1, 'quote': 'A patent protects an invention.'}]}
 
 class CoreTests(unittest.TestCase):
     def setUp(self):
@@ -28,7 +28,8 @@ class CoreTests(unittest.TestCase):
 
     def infer(self, answer):
         return patch('core.local_request', side_effect=[
-            {'models': [{'name': 'qwen2.5:3b'}]}, {}, self.reply(answer)])
+            {'models': [{'name': 'qwen2.5:3b'}]}, {}, self.reply(answer),
+            self.reply({**answer, 'answer': {'A':'D', 'B':'C', 'C':'B', 'D':'A', '?':'?'}[answer['answer']]})])
 
     def test_retrieval(self):
         self.assertEqual(self.engine.retrieve(QUESTION)[0]['page'], 2)
@@ -43,12 +44,12 @@ class CoreTests(unittest.TestCase):
             self.assertEqual(first['references'][0]['page'], 2)
             self.assertFalse(first['cached'])
             self.assertTrue(self.engine.answer(QUESTION)['cached'])
-            self.assertEqual(request.call_count, 3)
+            self.assertEqual(request.call_count, 4)
         reloaded = core.Engine(self.engine.pages, 'abc')
         self.assertTrue(reloaded.answer(QUESTION)['cached'])
         with self.infer(ANSWER) as request:
             self.assertFalse(reloaded.answer(QUESTION, refresh=True)['cached'])
-            self.assertEqual(request.call_count, 3)
+            self.assertEqual(request.call_count, 4)
         changed = core.Engine(self.engine.pages, 'different-notes')
         with self.infer(ANSWER):
             self.assertFalse(changed.answer(QUESTION)['cached'])
@@ -58,7 +59,7 @@ class CoreTests(unittest.TestCase):
             with self.assertRaises(ValueError): self.engine.answer(QUESTION)
 
     def test_unsupported_answer_not_cached(self):
-        with self.infer({**ANSWER, 'sources': []}):
+        with self.infer({**ANSWER, 'sources': [], 'evidence': []}):
             self.assertEqual(self.engine.answer(QUESTION)['answer'], '?')
             self.assertEqual(self.engine.cache, {})
 
@@ -102,7 +103,12 @@ class CoreTests(unittest.TestCase):
             def do_POST(self):
                 body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
                 captured.append((self.path, body, dict(self.headers)))
-                self.respond({} if self.path == '/api/show' else reply)
+                if self.path == '/api/show':
+                    self.respond({})
+                else:
+                    question = json.loads(body['messages'][1]['content'])['question']
+                    answer = {**ANSWER, 'answer': 'D' if 'A. Franchise' in question else 'A'}
+                    self.respond({'done': True, 'message': {'content': json.dumps(answer)}})
             def respond(self, payload):
                 data = json.dumps(payload).encode()
                 self.send_response(200)

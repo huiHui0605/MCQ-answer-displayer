@@ -81,8 +81,8 @@ class ScanTests(unittest.TestCase):
         self.assertIn('Patent', result.text)
         with tempfile.TemporaryDirectory() as temporary, patch.object(core, 'DATA', Path(temporary)), patch.dict('os.environ', {'MCQ_MODEL': 'qwen2.5:3b'}):
             engine = core.Engine([{'file': 'example.pdf', 'page': 1, 'text': 'A patent protects an invention.'}], 'example')
-            reply = {'done': True, 'message': {'content': '{"answer":"A","confidence":"high","explanation":"Patent","sources":[1]}'}}
-            with patch('core.local_request', side_effect=[{'models': [{'name': 'qwen2.5:3b'}]}, {}, reply]):
+            reply = {'done': True, 'message': {'content': '{"answer":"A","confidence":"high","explanation":"Patent","sources":[1],"evidence":[{"source":1,"quote":"A patent protects an invention."}]}'}}
+            with patch('core.local_request', side_effect=[{'models': [{'name': 'qwen2.5:3b'}]}, {}, reply, {**reply, 'message': {'content': reply['message']['content'].replace('"answer":"A"', '"answer":"D"')}}]):
                 answer = engine.answer(result.text)
             self.assertEqual(answer['answer'], 'A')
             self.assertEqual(answer['references'][0]['page'], 1)
