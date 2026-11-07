@@ -7,3 +7,11 @@ __pycache__/
 !.env.example
 .mcq-study/
 notes/*.pdf
+
+# Local OCR/model preferences and lecture content, even with a custom data directory
+settings.json
+settings.tmp
+lecture-index.json
+lecture-index.tmp
+answers.json
+answers.tmp

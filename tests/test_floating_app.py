@@ -18,7 +18,8 @@ class FloatingTests(unittest.TestCase):
         self.patch=patch('app.tk.Canvas')
         self.canvas=self.patch.start().return_value
         self.addCleanup(self.patch.stop)
-        self.app=FloatingApp(self.root,engine=Mock(),reader=Mock())
+        with patch('app.load_settings',return_value={}):
+            self.app=FloatingApp(self.root,engine=Mock(),reader=Mock())
         self.app.background=Mock()
 
     def click(self):
@@ -70,6 +71,40 @@ class FloatingTests(unittest.TestCase):
         self.assertEqual(self.app.anchor,(110,140))
         self.assertEqual(self.app.mode,'idle')
         self.app.background.assert_not_called()
+
+    def test_saved_area_is_applied_before_ocr(self):
+        import numpy as np
+        from settings import make_region
+        image=np.zeros((800,1200,3),dtype=np.uint8)
+        self.app.settings={'region':make_region(image.shape,(100,100),(900,700))}
+        with patch('app.scan_selected_area') as scan,patch('app.scan_screen') as full:
+            self.app.process_image(image)
+            self.assertEqual(scan.call_args.args[1].shape,(600,800,3))
+            full.assert_not_called()
+
+    def test_model_choice_is_saved_and_applied(self):
+        self.app.events.put(('model_ready','qwen2.5:7b'))
+        with patch('app.save_settings') as save:
+            self.app.poll()
+            save.assert_called_once_with({'model':'qwen2.5:7b'})
+        self.assertEqual(self.app.engine.model,'qwen2.5:7b')
+        self.assertEqual(self.app.mode,'idle')
+
+    def test_area_selection_is_one_off_not_every_click(self):
+        self.app.capture_action='select'
+        self.app.events.put(('captured',object()))
+        with patch.object(self.app,'choose_region') as select:
+            self.app.poll()
+            select.assert_called_once()
+        self.app.mode='idle'
+        self.app.scan()
+        self.assertEqual(self.app.capture_action,'scan')
+
+    def test_corrected_editor_uses_question_text_sent_to_model(self):
+        result=ScanResult('Home menu unrelated',True,questions=[Question('1','actual question')])
+        self.app.events.put(('scanned',result))
+        self.app.poll()
+        self.assertEqual(self.app.last_text,'1. actual question')
 
     def test_failed_ocr_is_click_to_dismiss_question_mark(self):
         self.app.events.put(('scanned',ScanResult('',False,'ambiguous layout')))

@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import re
 import sys
 import unicodedata
+from question_types import normalize_true_false
 
 
 @dataclass
@@ -45,14 +46,20 @@ def capture_screen():
 def prepare_question(lines):
     """Conservative option detection: ambiguous scans require a manual edit."""
     text = '\n'.join(unicodedata.normalize('NFKC', str(line)).strip() for line in lines)
+    boolean = normalize_true_false(text)
+    if boolean is not None:
+        return ScanResult(boolean, True)
     text = re.sub(r'(?<!\w)\(?([A-Da-d])\s*[.、:：)]\s*', r'\n\1. ', text)
     text = '\n'.join(line.strip() for line in text.splitlines() if line.strip())
+    boolean = normalize_true_false(text)
+    if boolean is not None:
+        return ScanResult(boolean, True)
     labels = list(re.finditer(r'(?m)^([A-Da-d])[.、:：)]\s*', text))
     # An English stem such as "A patent is ..." is not an option label.
     if [m.group(1).upper() for m in labels] != list('ABCD'):
         labels = list(re.finditer(r'(?m)^([A-Da-d])(?:[.、:：)]\s*|[ \t]+|$)', text))
     if [m.group(1).upper() for m in labels] != list('ABCD'):
-        return ScanResult(text, False, '没有识别到唯一一组顺序正确的 A/B/C/D 选项。请保留一道完整题目，校正文字后再答题。')
+        return ScanResult(text, False, '未识别到完整的 A/B/C/D 或 True/False 选项。请保留完整题目并校正文字。')
     # Canonicalize labels, including OCR boxes containing an isolated letter.
     for match in reversed(labels):
         text = text[:match.start()] + match.group(1).upper() + '. ' + text[match.end():]

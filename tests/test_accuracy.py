@@ -50,7 +50,7 @@ class AccuracyTests(unittest.TestCase):
 
     def test_evidence_from_unseen_end_of_long_page_is_rejected(self):
         self.engine=core.Engine([{'file':'x.pdf','page':1,'text':'patent '*400+QUOTE}],'long')
-        with self.requests(response('A')):
+        with patch.object(self.engine,'retrieve',return_value=self.engine.pages), self.requests(response('A')):
             self.assertEqual(self.engine.answer(Q)['answer'],'?')
 
     def test_missing_second_evidence_does_not_validate_first_answer(self):
@@ -67,6 +67,29 @@ class AccuracyTests(unittest.TestCase):
                {'file':'notes.pdf','page':2,'text':'Copyright protects original creative work.'}]
         engine=core.Engine(pages,'notes')
         self.assertEqual(engine.retrieve('What does copyright protect?\nA. Original creative works\nB. Cash\nC. Logo\nD. Inventions')[0]['page'],2)
+
+    def test_retrieval_selects_relevant_tail_instead_of_page_top(self):
+        text='General introductory material. '*110+'\n'+QUOTE
+        engine=core.Engine([{'file':'notes.pdf','page':1,'text':text}],'long')
+        result=engine.retrieve(Q)[0]['text']
+        self.assertIn(QUOTE,result)
+        self.assertLessEqual(len(result),1800)
+
+    def test_all_of_above_preserves_semantics_during_verification(self):
+        question=Q.replace('D. Franchise','D. All of the above')
+        with self.requests(response('D'),response('D')) as request:
+            self.assertEqual(self.engine.answer(question)['answer'],'D')
+            second=json.loads(request.call_args.args[1]['messages'][1]['content'])['question']
+            self.assertIn('D. All of the above',second)
+            self.assertIn('A. Patent',second)
+
+    def test_medium_confidence_is_unknown(self):
+        reply=response('A')
+        data=json.loads(reply['message']['content'])
+        data['confidence']='medium'
+        reply['message']['content']=json.dumps(data)
+        with self.requests(reply):
+            self.assertEqual(self.engine.answer(Q)['answer'],'?')
 
     def test_missing_or_duplicate_option_not_inferred(self):
         for text in [Q+'\nA. Another',Q.replace('A. Patent','A. ')]:

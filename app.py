@@ -5,9 +5,10 @@ import tkinter as tk
 from tkinter import messagebox, scrolledtext
 
 from answers import answer_questions
-from auto_scan import scan_screen
-from core import Engine, load_pages
+from auto_scan import scan_screen, scan_selected_area
+from core import Engine, load_pages, check_model
 from screen_scan import ScreenReader, enable_dpi_awareness, prepare_questions, capture_screen
+from settings import load_settings, save_settings, preferred_model, make_region, apply_region
 
 
 class FloatingApp:
@@ -15,6 +16,9 @@ class FloatingApp:
         self.root = root
         self.engine, self.reader = engine, reader
         self.events = queue.Queue()
+        self.settings = load_settings()
+        self.capture_action = 'scan'
+        self.selector = None
         self.mode = 'loading'
         self.last_text = ''
         self.last_error = ''
@@ -45,10 +49,11 @@ class FloatingApp:
         root.protocol('WM_DELETE_WINDOW', self.close)
         self.circle('…')
         if engine is not None and reader is not None:
+            self.engine.model = preferred_model(self.settings)
             self.mode = 'idle'
             self.circle('MCQ')
         else:
-            self.background('ready', lambda: (Engine(*load_pages()), ScreenReader()))
+            self.background('ready', lambda: (Engine(*load_pages(), model=preferred_model(self.settings)), ScreenReader()))
         root.after(80, self.poll)
 
     def background(self, kind, fn):
@@ -118,6 +123,12 @@ class FloatingApp:
     def menu(self, event):
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label='扫描一次', command=self.scan)
+        menu.add_command(label='设置题目区域（记住）', command=self.select_region)
+        menu.add_command(label='清除选区，恢复整屏', command=self.clear_region)
+        models=tk.Menu(menu,tearoff=0)
+        for name in ('qwen2.5:3b','qwen2.5:7b'):
+            models.add_command(label=name,command=lambda n=name:self.switch_model(n))
+        menu.add_cascade(label='本地模型',menu=models)
         menu.add_command(label='回到圆形图标', command=self.reset)
         menu.add_command(label='查看上次答案', command=lambda: self.show_answers(self.last_answers) if self.mode not in ('busy', 'loading') and self.last_answers else None)
         menu.add_command(label='校正识别文字 / 手动输入', command=self.open_editor)
@@ -129,7 +140,7 @@ class FloatingApp:
         finally:
             menu.grab_release()
 
-    def scan(self):
+    def scan(self, action='scan'):
         if self.mode in ('busy', 'loading'):
             return
         if self.engine is None or self.reader is None:
@@ -137,6 +148,7 @@ class FloatingApp:
             self.show_answers('?')
             return
         self.mode = 'busy'
+        self.capture_action = action
         self.last_error = ''
         if self.editor is not None and self.editor.winfo_exists():
             self.editor.destroy()
@@ -144,6 +156,85 @@ class FloatingApp:
         self.root.withdraw()
         # Let our own window disappear before the single screenshot.
         self.root.after(300, lambda: self.background('captured', capture_screen))
+
+    def select_region(self):
+        self.scan(action='select')
+
+    def clear_region(self):
+        if self.mode in ('busy','loading'):
+            return
+        updated={**self.settings}
+        updated.pop('region',None)
+        try:
+            save_settings(updated)
+            self.settings=updated
+            self.reset()
+        except OSError as exc:
+            self.last_error=str(exc)
+            self.show_answers('?')
+
+    def switch_model(self,name):
+        if self.mode in ('busy','loading'):
+            return
+        self.mode='busy'
+        self.circle('模型…')
+        self.background('model_ready',lambda:check_model(name))
+
+    def process_image(self,image):
+        selected = self.settings.get('region')
+        cropped = apply_region(image,selected)
+        return scan_selected_area(self.reader,cropped) if selected else scan_screen(self.reader,image)
+
+    def choose_region(self,image):
+        from PIL import Image,ImageTk
+        height,width=image.shape[:2]
+        overlay=tk.Toplevel(self.root)
+        self.selector=overlay
+        overlay.overrideredirect(True)
+        overlay.geometry(f'{width}x{height}+0+0')
+        overlay.attributes('-topmost',True)
+        canvas=tk.Canvas(overlay,width=width,height=height,highlightthickness=0,cursor='crosshair')
+        canvas.pack(fill='both',expand=True)
+        photo=ImageTk.PhotoImage(Image.fromarray(image[:,:,::-1]))
+        canvas.image=photo
+        canvas.create_image(0,0,image=photo,anchor='nw')
+        canvas.create_text(20,20,anchor='nw',fill='red',text='框选完整题干和选项；只设置一次，之后点击自动扫描此区域；Esc 取消',font=('',14,'bold'))
+        drag={'start':None,'box':None}
+        def press(event):
+            drag['start']=(event.x,event.y)
+            if drag['box'] is not None:
+                canvas.delete(drag['box'])
+            drag['box']=canvas.create_rectangle(event.x,event.y,event.x,event.y,outline='red',width=3)
+        def move(event):
+            if drag['start']:
+                canvas.coords(drag['box'],*drag['start'],event.x,event.y)
+        def cancel():
+            overlay.destroy()
+            self.selector=None
+            self.mode='idle'
+            self.circle('MCQ')
+        def release(event):
+            if not drag['start']:
+                return
+            try:
+                region=make_region(image.shape,drag['start'],(event.x,event.y))
+                updated={**self.settings,'region':region}
+                save_settings(updated)
+                self.settings=updated
+            except (ValueError,OSError) as exc:
+                cancel()
+                self.last_error=str(exc)
+                self.show_answers('?')
+                return
+            overlay.destroy()
+            self.selector=None
+            self.circle('OCR…')
+            self.background('scanned',lambda:self.process_image(image))
+        canvas.bind('<ButtonPress-1>',press)
+        canvas.bind('<B1-Motion>',move)
+        canvas.bind('<ButtonRelease-1>',release)
+        overlay.bind('<Escape>',lambda e:cancel())
+        overlay.focus_force()
 
     def solve(self, questions, refresh=False):
         self.mode = 'busy'
@@ -192,10 +283,32 @@ class FloatingApp:
                     self.mode = 'idle'
                     self.circle('MCQ')
                 elif kind == 'captured':
-                    self.circle('OCR…')
-                    self.background('scanned', lambda image=value: scan_screen(self.reader, image))
+                    if self.capture_action == 'select':
+                        try:
+                            self.choose_region(value)
+                        except Exception as exc:
+                            if self.selector is not None:
+                                self.selector.destroy()
+                                self.selector=None
+                            self.last_error=str(exc)
+                            self.show_answers('?')
+                    else:
+                        self.circle('OCR…')
+                        self.background('scanned', lambda image=value: self.process_image(image))
+                elif kind == 'model_ready':
+                    updated={**self.settings,'model':value}
+                    try:
+                        save_settings(updated)
+                        self.settings=updated
+                        self.engine.model=value
+                        self.mode='idle'
+                        self.circle('MCQ')
+                    except OSError as exc:
+                        self.last_error=str(exc)
+                        self.show_answers('?')
                 elif kind == 'scanned':
-                    self.last_text = value.text
+                    self.last_text = ('\n\n'.join(f'{q.number}. {q.text}' for q in value.questions)
+                                      if value.questions and all(q.text for q in value.questions) else value.text)
                     self.last_error = value.warning
                     if value.ready:
                         self.solve(value.questions)

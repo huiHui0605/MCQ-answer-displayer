@@ -53,6 +53,14 @@ class AutoScanTests(unittest.TestCase):
         reader.read.return_value = ScanResult('',True, questions=[Question('7',text)])
         self.assertEqual(scan_screen(reader, np.zeros((1000,1400,3),dtype=np.uint8)).questions[0].text,'')
 
+    def test_question_number_disagreement_is_not_silently_accepted(self):
+        reader=Mock()
+        reader.ocr.return_value=example(),None
+        text='Which protects an invention?\nA. Patent\nB. Trademark\nC. Copyright\nD. Franchise'
+        reader.read.return_value=ScanResult('',True,questions=[Question('1',text)])
+        result=scan_screen(reader,np.zeros((1000,1400,3),dtype=np.uint8))
+        self.assertEqual(result.questions[0].text,'')
+
     def test_two_questions_preserve_numbers(self):
         rows = example(7,100)+example(8,600)
         self.assertEqual([b.number for b in locate_blocks(rows,(1200,1400,3))], ['7','8'])
@@ -73,7 +81,27 @@ class AutoScanTests(unittest.TestCase):
     def test_cross_column_labels_not_merged(self):
         rows=example()
         rows[3]=row('C. Copyright',950,340)
-        self.assertEqual(locate_blocks(rows,(1000,1600,3)),[])
+        self.assertTrue(all(not b.complete for b in locate_blocks(rows,(1000,1600,3))))
+
+    def test_interleaved_columns_are_separated(self):
+        left=example(1,100)
+        right=example(2,100)
+        for r in right:
+            for point in r[0]: point[0]+=730
+        blocks=locate_blocks(left+right,(1000,1800,3))
+        self.assertEqual([b.number for b in blocks],['1','2'])
+        self.assertTrue(all(b.complete for b in blocks))
+        self.assertTrue(all(len(b.rows)==5 for b in blocks))
+
+    def test_real_two_column_english_page(self):
+        image=np.full((1100,1800,3),255,dtype=np.uint8)
+        for n,x in [(1,50),(2,950)]:
+            for k,text in enumerate([f'{n}. Which protects an invention?','A. Patent','B. Trademark','C. Copyright','D. Franchise']):
+                cv2.putText(image,text,(x,150+k*100),cv2.FONT_HERSHEY_SIMPLEX,.85,(0,0,0),2,cv2.LINE_AA)
+        result=scan_screen(ScreenReader(),image)
+        self.assertTrue(result.ready,result.warning)
+        self.assertEqual([q.number for q in result.questions],['1','2'])
+        self.assertTrue(all(q.text for q in result.questions))
 
     def test_real_auto_localization_and_two_pass_english_ocr(self):
         image=np.full((1000,1600,3),255,dtype=np.uint8)

@@ -2,6 +2,7 @@
 import sys
 from importlib.metadata import version
 from core import check_model, load_pages
+from settings import load_settings, preferred_model
 
 
 def main():
@@ -10,7 +11,7 @@ def main():
         print(f'Local OCR: RapidOCR {version("rapidocr-onnxruntime")}')
         pages, _ = load_pages()
         print(f'PDF text pages: {len(pages)}')
-        print(f'Local model: {check_model()}')
+        print(f'Local model: {check_model(preferred_model(load_settings()))}')
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 1
