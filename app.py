@@ -1,4 +1,4 @@
-"""Visible circular desktop button: click, scan once, answer, click to reset."""
+"""Circular desktop button: select, answer, hide, right-click to restore."""
 import queue
 import threading
 import tkinter as tk
@@ -9,6 +9,7 @@ from auto_scan import scan_selected_area
 from core import Engine, load_pages, check_model
 from screen_scan import ScreenReader, enable_dpi_awareness, prepare_questions, capture_screen
 from settings import load_settings, save_settings, preferred_model, make_region, apply_region
+from mouse_wake import RightClickWake
 
 IDLE_SYMBOL = '☁'
 
@@ -28,6 +29,7 @@ class FloatingApp:
         self.anchor = (80, 100)
         self.drag = None
         self.closed = False
+        self.wake = RightClickWake(root, self.restore)
         root.title('MCQ Study')
         root.overrideredirect(True)
         root.attributes('-topmost', True)
@@ -95,8 +97,25 @@ class FloatingApp:
     def reset(self):
         if self.mode in ('busy', 'loading'):
             return
+        self.wake.cancel()
         self.mode = 'idle'
         self.circle(IDLE_SYMBOL)
+
+    def hide_answer(self):
+        if not self.wake.available:
+            # Non-Windows desktops keep a reachable icon.
+            self.reset()
+            return
+        self.mode = 'hidden'
+        if self.editor is not None and self.editor.winfo_exists():
+            self.editor.destroy()
+            self.editor = None
+        self.root.withdraw()
+        self.wake.arm()
+
+    def restore(self):
+        if not self.closed and self.mode == 'hidden':
+            self.reset()
 
     def press(self, event):
         self.drag = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y(), False)
@@ -118,7 +137,7 @@ class FloatingApp:
         if moved:
             return
         if self.mode == 'answer':
-            self.reset()
+            self.hide_answer()
         elif self.mode == 'idle':
             self.scan()
 
@@ -307,6 +326,7 @@ class FloatingApp:
 
     def close(self):
         self.closed = True
+        self.wake.cancel()
         self.root.destroy()
 
 

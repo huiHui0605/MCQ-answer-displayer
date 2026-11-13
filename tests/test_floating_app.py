@@ -18,6 +18,10 @@ class FloatingTests(unittest.TestCase):
         self.patch=patch('app.tk.Canvas')
         self.canvas=self.patch.start().return_value
         self.addCleanup(self.patch.stop)
+        wake_patch=patch('app.RightClickWake')
+        self.wake=wake_patch.start().return_value
+        self.wake.available=True
+        self.addCleanup(wake_patch.stop)
         with patch('app.load_settings',return_value={}):
             self.app=FloatingApp(self.root,engine=Mock(),reader=Mock())
         self.app.background=Mock()
@@ -33,9 +37,13 @@ class FloatingTests(unittest.TestCase):
         self.canvas.create_oval.assert_called()
         self.assertEqual(self.app.mode,'idle')
 
-    def test_answer_click_returns_circle_without_rescanning(self):
+    def test_answer_click_hides_then_right_click_restores_without_rescanning(self):
         self.app.show_answers('1. b\n2. c')
         self.click()
+        self.assertEqual(self.app.mode,'hidden')
+        self.root.withdraw.assert_called()
+        self.wake.arm.assert_called()
+        self.app.restore()
         self.assertEqual(self.app.mode,'idle')
         self.app.background.assert_not_called()
         self.assertEqual(self.canvas.create_text.call_args.kwargs['text'],IDLE_SYMBOL)
@@ -59,6 +67,8 @@ class FloatingTests(unittest.TestCase):
             self.assertEqual(self.app.mode,'answer')
             self.assertEqual(self.app.last_answers,'1. b')
             self.click()
+            self.assertEqual(self.app.mode,'hidden')
+            self.app.restore()
             self.assertEqual(self.app.mode,'idle')
 
     def test_busy_click_does_not_launch_duplicate_capture(self):
@@ -144,7 +154,35 @@ class FloatingTests(unittest.TestCase):
         self.assertEqual(self.app.last_answers,'?')
         self.assertEqual(self.app.last_error,'ambiguous layout')
         self.click()
+        self.assertEqual(self.app.mode,'hidden')
+        self.root.withdraw.assert_called()
+        self.wake.arm.assert_called()
+        self.app.restore()
         self.assertEqual(self.app.mode,'idle')
+
+
+    def test_right_click_restore_does_not_interrupt_other_states(self):
+        for mode in ('idle', 'busy', 'answer', 'loading'):
+            self.app.mode=mode
+            self.app.restore()
+            self.assertEqual(self.app.mode,mode)
+        self.app.background.assert_not_called()
+
+    def test_unsupported_platform_keeps_icon_reachable(self):
+        self.wake.available=False
+        self.app.show_answers('T')
+        self.click()
+        self.assertEqual(self.app.mode,'idle')
+        self.wake.arm.assert_not_called()
+
+    def test_close_cancels_mouse_polling(self):
+        self.app.show_answers('F')
+        self.click()
+        self.app.close()
+        self.wake.cancel.assert_called()
+        self.app.restore()
+        self.assertTrue(self.app.closed)
+        self.assertEqual(self.app.mode,'hidden')
 
 
 if __name__=='__main__': unittest.main()

@@ -20,6 +20,16 @@ class ScanResult:
     questions: list[Question] = field(default_factory=list)
 
 
+def clean_ocr_line(text):
+    """Remove printed answer keys and blank rules, never repair question words."""
+    text = unicodedata.normalize('NFKC', str(text)).strip()
+    text = re.sub(r'(?i)(?<!\w)(?:correct\s+)?answer\s*[:：]\s*'
+                  r'\(?\b(?:[a-dtf]|true|false)\b\)?[.\s]*$', '', text).strip()
+    if re.fullmatch(r'[\s_—–.\-=]*', text):
+        return ''
+    return text
+
+
 def enable_dpi_awareness():
     # Call before Tk creates windows; keeps coordinates consistent on Windows.
     if sys.platform == 'win32':
@@ -74,7 +84,8 @@ def prepare_question(lines):
 
 def prepare_questions(lines):
     """Split only explicitly numbered, consecutive questions in one column."""
-    text = '\n'.join(unicodedata.normalize('NFKC', str(line)).strip() for line in lines)
+    lines = [value for line in lines if (value := clean_ocr_line(line))]
+    text = '\n'.join(lines)
     marker = re.compile(r'(?im)^\s*(?:(?:question|q)\s*(\d{1,3})[.):]?(?:[ \t]+|$)|(\d{1,3})[.):](?:[ \t]+|(?=[A-Za-z])|$))')
     matches = list(marker.finditer(text))
     if not matches:
@@ -112,7 +123,7 @@ def prepare_image(image):
     """Enlarge small crops for text recognition, preserving color and punctuation."""
     import cv2
     height, width = image.shape[:2]
-    scale = min(2.0, 1800 / max(height, width))
+    scale = min(3.0, 2400 / max(height, width))
     if scale > 1:
         image = cv2.resize(image, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
     return cv2.copyMakeBorder(image, 16, 16, 16, 16, cv2.BORDER_CONSTANT, value=(255, 255, 255))
@@ -130,8 +141,14 @@ class ScreenReader:
         rows, _ = self.ocr(prepare_image(image) if image is not None else image)
         if not rows:
             return ScanResult('', False, '没有识别到文字。请放大题目，并确认题目在主屏幕上清晰可见。')
-        result = prepare_questions([row[1] for row in rows])
-        if any(float(row[2]) < .80 for row in rows):
+        # Answer-key rows and decorative underlines are often low-confidence;
+        # they must not veto an otherwise complete question.
+        meaningful = [(clean_ocr_line(row[1]), float(row[2])) for row in rows
+                      if clean_ocr_line(row[1])]
+        result = prepare_questions([text for text, _ in meaningful])
+        low = [text for text, score in meaningful if score < .80]
+        if low:
             result.ready = False
-            result.warning = '部分文字识别置信度较低。请核对题干、NOT/EXCEPT 和选项后点击显示答案。'
+            result.warning = ('部分文字识别置信度较低，请放大题目或右键校正文字：\n'
+                              + '\n'.join(text[:160] for text in low[:5]))
         return result

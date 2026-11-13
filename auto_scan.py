@@ -205,15 +205,7 @@ def scan_screen(reader, image):
 
 
 def scan_selected_area(reader, image):
-    first_rows, _ = reader.ocr(image)
-    if not first_rows:
-        return ScanResult('', False, '题目区域未识别到文字，请放大题目或重设区域。')
-    first = prepare_questions([r[1] for r in first_rows])
-    second = reader.read(image)
-    if (not first.ready or not second.ready
-            or len(first.questions) != len(second.questions)
-            or any(float(r[2]) < .8 for r in first_rows)):
-        return ScanResult(first.text, False, '题目区域识别不完整，请重新设置区域或校正文字。')
-    items = [Question(a.number, b.text if same_question(a.text,b.text) and a.number == b.number else '')
-             for a,b in zip(first.questions,second.questions)]
-    return ScanResult(second.text, True, '两遍 OCR 不一致。' if any(not q.text for q in items) else '', items)
+    # The user's crop already supplies the region. Read its enlarged version;
+    # a degraded raw-size pass is not independent evidence against this text.
+    # ScreenReader still validates option completeness and text confidence.
+    return reader.read(image)

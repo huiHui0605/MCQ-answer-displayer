@@ -71,7 +71,7 @@ class BatchTests(unittest.TestCase):
     def test_small_text_image_is_enlarged_and_bordered(self):
         image = np.zeros((200,300,3), dtype=np.uint8)
         result = prepare_image(image)
-        self.assertEqual(result.shape, (432,632,3))
+        self.assertEqual(result.shape, (632,932,3))
         self.assertTrue((result[0] == 255).all())
 
     def test_real_english_numbered_batch_ocr(self):
